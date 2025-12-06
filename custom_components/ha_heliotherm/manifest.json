@@ -1,15 +1,15 @@
 {
   "domain": "ha_heliotherm",
   "name": "HaHeliotherm",
-  "codeowners": ["@mbuchber"],
+  "codeowners": ["@JosefSommerauer"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/mbuchber/ha_heliotherm/",
+  "documentation": "https://github.com/JosefSommerauer/ha_heliotherm/",
   "homekit": {},
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/mbuchber/ha_heliotherm/issues",
   "requirements": ["pymodbus"],
   "ssdp": [],
-  "version": "v1.0.43",
+  "version": "v1.0.44",
   "zeroconf": []
 }
