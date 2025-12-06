@@ -31,7 +31,13 @@ from .const import DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 # PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SELECT]
-PLATFORMS = [Platform.SELECT, Platform.SENSOR, Platform.BINARY_SENSOR, Platform.CLIMATE]
+PLATFORMS = [
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.CLIMATE,
+    Platform.SWITCH
+]
 
 
 async def async_setup(hass, config):
@@ -210,6 +216,7 @@ class HaHeliothermModbusHub:
         )
 
     async def setter_function_callback(self, entity: Entity, option):
+        # Handle Select entities
         if entity.entity_description.key == "select_betriebsart":
             await self.set_betriebsart(option)
             return
@@ -219,24 +226,33 @@ class HaHeliothermModbusHub:
         if entity.entity_description.key == "select_mkr2_betriebsart":
             await self.set_mkr2_betriebsart(option)
             return
+
+        # Handle Climate entities
         if entity.entity_description.key == "climate_hkr_raum_soll":
             temp = float(option["temperature"])
             await self.set_raumtemperatur(temp)
+            return
 
         if entity.entity_description.key == "climate_rlt_kuehlen":
             temp = float(option["temperature"])
             await self.set_rltkuehlen(temp)
+            return
 
         if entity.entity_description.key == "climate_ww_bereitung":
             tmin = float(option["target_temp_low"])
             tmax = float(option["target_temp_high"])
             await self.set_ww_bereitung(tmin, tmax)
+            return
 
-#---------------------eingefügt-------------------------------------------------
         if entity.entity_description.key == "climate_rl_soll":
             temp = float(option["temperature"])
             await self.set_rl_soll(temp)
-#---------------------eingefügt-------------------------------------------------
+            return
+
+        # Handle Switch entities
+        if entity.entity_description.key == "climate_rl_soll_ovr":
+            await self.set_rl_soll_ovr(option)
+            return
 
     async def set_betriebsart(self, betriebsart: str):
         betriebsart_nr = self.getbetriebsartnr(betriebsart)
@@ -284,13 +300,29 @@ class HaHeliothermModbusHub:
 
 #---------------------eingefügt-------------------------------------------------
     async def set_rl_soll(self, temperature: float):
+        """Set return temperature setpoint - only works if override is active."""
         if temperature is None:
             return
+
+        # Check if override is active
+        if not self.data.get("climate_rl_soll_ovr", False):
+            from homeassistant.exceptions import HomeAssistantError
+            raise HomeAssistantError(
+                "Rücklauf-Sollwert Override ist nicht aktiv. Bitte zuerst den Override-Switch aktivieren."
+            )
+
         temp_int = int(temperature * 10)
-        temp_activate_rl_soll = 1
-        self._client.write_register(address=102, value=temp_int, device_id=1)
-        self._client.write_register(address=103, value=temp_activate_rl_soll, device_id=1)
+        with self._lock:
+            self._client.write_register(address=102, value=temp_int, device_id=1)
         await self.async_refresh_modbus_data()
+
+    async def set_rl_soll_ovr(self, active: bool):
+        """Enable or disable manual override of return temperature setpoint."""
+        value = 1 if active else 0
+        with self._lock:
+            self._client.write_register(address=103, value=value, device_id=1)
+        await self.async_refresh_modbus_data()
+
 #---------------------eingefügt-------------------------------------------------
 
     def read_modbus_registers(self):
@@ -486,13 +518,15 @@ class HaHeliothermModbusHub:
             "temperature": self.checkval(temp_brauchwasser, 0.1),
         }
 
-#---------------------eingefügt-------------------------------------------------
+        # manual overwrite of flow return temp. is only possible if overwrite flag is set
+        # caution: overwritting the flow return temperure disables the automatic controle loop
+
         climate_rl_soll = modbusdata3.registers[2]
         self.data["climate_rl_soll"] = {
             "temperature": self.checkval(climate_rl_soll, 0.1)
         }
-#---------------------eingefügt-------------------------------------------------
 
-        # externe_anforderung = modbusdata3.registers[20]
+        climate_rl_soll_ovr = modbusdata3.registers[3]
+        self.data["climate_rl_soll_ovr"] = bool(climate_rl_soll_ovr)
 
         return True

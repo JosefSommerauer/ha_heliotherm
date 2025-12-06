@@ -71,6 +71,13 @@ class HaHeliothermClimateEntityDescription(ClimateEntityDescription):
     supported_features: ClimateEntityFeature = ClimateEntityFeature.TARGET_TEMPERATURE
 
 
+@dataclass
+class HaHeliothermSwitchEntityDescription(SensorEntityDescription):
+    """A class that describes HaHeliotherm Modbus switch entities."""
+
+    pass
+
+
 CLIMATE_TYPES: dict[str, list[HaHeliothermClimateEntityDescription]] = {
     "climate_hkr_raum_soll": HaHeliothermClimateEntityDescription(
         name="Raum Solltemperatur",
@@ -391,5 +398,13 @@ BINARYSENSOR_TYPES: dict[str, list[HaHeliothermBinarySensorEntityDescription]] =
     "kuehlen_umv_passiv": HaHeliothermBinarySensorEntityDescription(
         name="Kühlen UMV passiv",
         key="kuehlen_umv_passiv",
+    ),
+}
+
+SWITCH_TYPES: dict[str, list[HaHeliothermSwitchEntityDescription]] = {
+    "climate_rl_soll_ovr": HaHeliothermSwitchEntityDescription(
+        name="Rücklauf-Sollwert Override",
+        key="climate_rl_soll_ovr",
+        icon="mdi:toggle-switch",
     ),
 }
