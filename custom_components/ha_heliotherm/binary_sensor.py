@@ -18,6 +18,7 @@ from .const import (
     BINARYSENSOR_TYPES,
     HaHeliothermBinarySensorEntityDescription,
 )
+from .device_config import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,14 +27,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
     hub_name = entry.data[CONF_NAME]
     hub = hass.data[DOMAIN][hub_name]["hub"]
 
-    device_info = {
-        "identifiers": {(DOMAIN, hub_name)},
-        "name": hub_name,
-        "manufacturer": ATTR_MANUFACTURER,
-    }
-
     entities = []
     for sensor_description in BINARYSENSOR_TYPES.values():
+        device_info = get_device_info(
+            hub_name,
+            getattr(sensor_description, 'device', 'main')
+        )
+
         sensor = HaHeliothermModbusBinarySensor(
             hub_name,
             hub,

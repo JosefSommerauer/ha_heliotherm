@@ -36,7 +36,9 @@ PLATFORMS = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
     Platform.CLIMATE,
-    Platform.SWITCH
+    Platform.SWITCH,
+    Platform.NUMBER,
+    Platform.BUTTON,
 ]
 
 
@@ -254,6 +256,104 @@ class HaHeliothermModbusHub:
             await self.set_rl_soll_ovr(option)
             return
 
+        # Handle Number entities (Heizkurven)
+        if entity.entity_description.key == "hkr_heizgrenze":
+            await self.set_hkr_heizgrenze(option)
+            return
+        if entity.entity_description.key == "hkr_rlt_soll_ohg":
+            await self.set_hkr_rlt_soll_ohg(option)
+            return
+        if entity.entity_description.key == "hkr_rlt_soll_0":
+            await self.set_hkr_rlt_soll_0(option)
+            return
+        if entity.entity_description.key == "hkr_rlt_soll_uhg":
+            await self.set_hkr_rlt_soll_uhg(option)
+            return
+
+        # Phase 2: WW Minimaltemp
+        if entity.entity_description.key == "ww_minimaltemp":
+            await self.set_ww_minimaltemp(option)
+            return
+
+        # Phase 2: Override Values
+        if entity.entity_description.key == "aussentemp_override_wert":
+            await self.set_aussentemp_override_wert(option)
+            return
+        if entity.entity_description.key == "puffer_override_wert":
+            await self.set_puffer_override_wert(option)
+            return
+        if entity.entity_description.key == "brauchwasser_override_wert":
+            await self.set_brauchwasser_override_wert(option)
+            return
+
+        # Phase 2: Override Switches
+        if entity.entity_description.key == "aussentemp_override":
+            await self.set_aussentemp_override(option)
+            return
+        if entity.entity_description.key == "puffer_override":
+            await self.set_puffer_override(option)
+            return
+        if entity.entity_description.key == "brauchwasser_override":
+            await self.set_brauchwasser_override(option)
+            return
+
+        # Phase 2: MKR Climate Entities
+        if entity.entity_description.key == "climate_mkr1_raum_soll":
+            temp = float(option["temperature"])
+            await self.set_mkr1_raumtemperatur(temp)
+            return
+        if entity.entity_description.key == "climate_mkr1_rlt_kuehlen":
+            temp = float(option["temperature"])
+            await self.set_mkr1_rlt_kuehlen(temp)
+            return
+        if entity.entity_description.key == "climate_mkr2_raum_soll":
+            temp = float(option["temperature"])
+            await self.set_mkr2_raumtemperatur(temp)
+            return
+        if entity.entity_description.key == "climate_mkr2_rlt_kuehlen":
+            temp = float(option["temperature"])
+            await self.set_mkr2_rlt_kuehlen(temp)
+            return
+
+        # Phase 3: MKR1 Heizkurven
+        if entity.entity_description.key == "mkr1_heizgrenze":
+            await self.set_mkr1_heizgrenze(option)
+            return
+        if entity.entity_description.key == "mkr1_rlt_soll_ohg":
+            await self.set_mkr1_rlt_soll_ohg(option)
+            return
+        if entity.entity_description.key == "mkr1_rlt_soll_0":
+            await self.set_mkr1_rlt_soll_0(option)
+            return
+        if entity.entity_description.key == "mkr1_rlt_soll_uhg":
+            await self.set_mkr1_rlt_soll_uhg(option)
+            return
+
+        # Phase 3: MKR2 Heizkurven
+        if entity.entity_description.key == "mkr2_heizgrenze":
+            await self.set_mkr2_heizgrenze(option)
+            return
+        if entity.entity_description.key == "mkr2_rlt_soll_ohg":
+            await self.set_mkr2_rlt_soll_ohg(option)
+            return
+        if entity.entity_description.key == "mkr2_rlt_soll_0":
+            await self.set_mkr2_rlt_soll_0(option)
+            return
+        if entity.entity_description.key == "mkr2_rlt_soll_uhg":
+            await self.set_mkr2_rlt_soll_uhg(option)
+            return
+
+        # Phase 3: PV/SG Parameter
+        if entity.entity_description.key == "pv_energie":
+            await self.set_pv_energie(option)
+            return
+        if entity.entity_description.key == "ueberheizen_pv_sg":
+            await self.set_ueberheizen_pv_sg(option)
+            return
+        if entity.entity_description.key == "unterkuehlen_pv_sg":
+            await self.set_unterkuehlen_pv_sg(option)
+            return
+
     async def set_betriebsart(self, betriebsart: str):
         betriebsart_nr = self.getbetriebsartnr(betriebsart)
         if betriebsart_nr is None:
@@ -306,6 +406,30 @@ class HaHeliothermModbusHub:
 
         # Check if override is active
         if not self.data.get("climate_rl_soll_ovr", False):
+            error_msg = (
+                "⚠️ Rücklauf-Sollwert kann nicht geändert werden!\n\n"
+                "Der 'Rücklauf-Sollwert Override' Switch ist nicht aktiv. "
+                "Bitte aktivieren Sie zuerst den Switch, um die manuelle Steuerung zu ermöglichen.\n\n"
+                "**ACHTUNG:** Die manuelle Steuerung deaktiviert die automatische Regelung der Wärmepumpe!"
+            )
+
+            _LOGGER.warning(
+                "Versuch die Rücklauf-Solltemperatur auf %.1f°C zu ändern, aber Override ist nicht aktiv.",
+                temperature
+            )
+
+            # Create persistent notification
+            await self._hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "⚠️ Rücklauf-Sollwert Override erforderlich",
+                    "message": error_msg,
+                    "notification_id": f"{DOMAIN}_rl_soll_override_warning",
+                },
+            )
+
+            # Still raise error to prevent the write
             from homeassistant.exceptions import HomeAssistantError
             raise HomeAssistantError(
                 "Rücklauf-Sollwert Override ist nicht aktiv. Bitte zuerst den Override-Switch aktivieren."
@@ -321,16 +445,285 @@ class HaHeliothermModbusHub:
         value = 1 if active else 0
         with self._lock:
             self._client.write_register(address=103, value=value, device_id=1)
+
+        # Clear warning notification when override is activated
+        if active:
+            try:
+                await self._hass.services.async_call(
+                    "persistent_notification",
+                    "dismiss",
+                    {"notification_id": f"{DOMAIN}_rl_soll_override_warning"},
+                )
+            except Exception:
+                # Notification might not exist, ignore
+                pass
+
+        await self.async_refresh_modbus_data()
+
+#---------------------eingefügt-------------------------------------------------
+
+    # Phase 1: Button callbacks
+    async def button_press_callback(self, entity: Entity):
+        """Handle button press events."""
+        if entity.entity_description.key == "button_entstoerung":
+            await self.press_entstoerung()
+            return
+
+    async def press_entstoerung(self):
+        """Press Entstörung button (fault reset)."""
+        _LOGGER.info("Entstörung button pressed - resetting fault")
+        with self._lock:
+            # Write 1 to HR 128 to reset fault
+            self._client.write_register(address=128, value=1, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    # Phase 1: Setter für Heizkurven-Parameter
+    async def set_hkr_heizgrenze(self, value: float):
+        """Set HKR Heizgrenze (heating limit)."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=135, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_hkr_rlt_soll_ohg(self, value: float):
+        """Set HKR RLT Soll oberhalb Heizgrenze."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=136, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_hkr_rlt_soll_0(self, value: float):
+        """Set HKR RLT Soll bei 0°C."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=137, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_hkr_rlt_soll_uhg(self, value: float):
+        """Set HKR RLT Soll unterhalb Heizgrenze."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=138, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    # Phase 2: WW Minimaltemp
+    async def set_ww_minimaltemp(self, value: float):
+        """Set WW Minimaltemperatur."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=106, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    # Phase 2: MKR Climate Setters
+    async def set_mkr1_raumtemperatur(self, temperature: float):
+        """Set MKR1 Raum Solltemperatur."""
+        if temperature is None:
+            return
+        temp_int = int(temperature * 10)
+        with self._lock:
+            self._client.write_register(address=108, value=temp_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_mkr1_rlt_kuehlen(self, temperature: float):
+        """Set MKR1 Kühlen RLT min."""
+        if temperature is None:
+            return
+        temp_int = int(temperature * 10)
+        with self._lock:
+            self._client.write_register(address=111, value=temp_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_mkr2_raumtemperatur(self, temperature: float):
+        """Set MKR2 Raum Solltemperatur."""
+        if temperature is None:
+            return
+        temp_int = int(temperature * 10)
+        with self._lock:
+            self._client.write_register(address=113, value=temp_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_mkr2_rlt_kuehlen(self, temperature: float):
+        """Set MKR2 Kühlen RLT min."""
+        if temperature is None:
+            return
+        temp_int = int(temperature * 10)
+        with self._lock:
+            self._client.write_register(address=116, value=temp_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    # Phase 2: Override Setters
+    async def set_aussentemp_override_wert(self, value: float):
+        """Set Außentemperatur Override Value."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=129, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_aussentemp_override(self, active: bool):
+        """Enable or disable Außentemperatur Override."""
+        value = 1 if active else 0
+        with self._lock:
+            self._client.write_register(address=130, value=value, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_puffer_override_wert(self, value: float):
+        """Set Pufferspeicher Override Value."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=131, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_puffer_override(self, active: bool):
+        """Enable or disable Pufferspeicher Override."""
+        value = 1 if active else 0
+        with self._lock:
+            self._client.write_register(address=132, value=value, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_brauchwasser_override_wert(self, value: float):
+        """Set Brauchwasser Override Value."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=133, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_brauchwasser_override(self, active: bool):
+        """Enable or disable Brauchwasser Override."""
+        value = 1 if active else 0
+        with self._lock:
+            self._client.write_register(address=134, value=value, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    # Phase 3: MKR1 Heizkurven Setter
+    async def set_mkr1_heizgrenze(self, value: float):
+        """Set MKR1 Heizgrenze."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=139, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_mkr1_rlt_soll_ohg(self, value: float):
+        """Set MKR1 RLT Soll oberhalb Heizgrenze."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=140, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_mkr1_rlt_soll_0(self, value: float):
+        """Set MKR1 RLT Soll bei 0°C."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=141, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_mkr1_rlt_soll_uhg(self, value: float):
+        """Set MKR1 RLT Soll unterhalb Heizgrenze."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=142, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    # Phase 3: MKR2 Heizkurven Setter
+    async def set_mkr2_heizgrenze(self, value: float):
+        """Set MKR2 Heizgrenze."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=143, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_mkr2_rlt_soll_ohg(self, value: float):
+        """Set MKR2 RLT Soll oberhalb Heizgrenze."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=144, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_mkr2_rlt_soll_0(self, value: float):
+        """Set MKR2 RLT Soll bei 0°C."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=145, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_mkr2_rlt_soll_uhg(self, value: float):
+        """Set MKR2 RLT Soll unterhalb Heizgrenze."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=146, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    # Phase 3: PV/SG Parameter Setter
+    async def set_pv_energie(self, value: float):
+        """Set PV Energie (32-bit value)."""
+        if value is None:
+            return
+        value_int = int(value)
+        # Split into upper and lower 16-bit values
+        value_upper = (value_int >> 16) & 0xFFFF
+        value_lower = value_int & 0xFFFF
+        with self._lock:
+            self._client.write_register(address=117, value=value_upper, device_id=1)
+            self._client.write_register(address=118, value=value_lower, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_ueberheizen_pv_sg(self, value: float):
+        """Set Überhitzen bei PV/SG."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=122, value=value_int, device_id=1)
+        await self.async_refresh_modbus_data()
+
+    async def set_unterkuehlen_pv_sg(self, value: float):
+        """Set Unterkühlen bei PV/SG."""
+        if value is None:
+            return
+        value_int = int(value * 10)
+        with self._lock:
+            self._client.write_register(address=123, value=value_int, device_id=1)
         await self.async_refresh_modbus_data()
 
 #---------------------eingefügt-------------------------------------------------
 
     def read_modbus_registers(self):
         """Read from modbus registers"""
-        modbusdata = self.read_input_registers(slave=1, address=10, count=32)
+        modbusdata = self.read_input_registers(slave=1, address=10, count=43)  # IR 10-52
         modbusdata2 = self.read_input_registers(slave=1, address=60, count=16)
         modbusdata3 = self._client.read_holding_registers(
-            address=100, count=27, device_id=1
+            address=100, count=51, device_id=1  # HR 100-150
         )
 
         # if modbusdata.isError():
@@ -452,6 +845,41 @@ class HaHeliothermModbusHub:
         )
 #---------------------geändert-------------------------------------------------
 
+        # Phase 1: Neue Input Register (IR 32-42)
+        # IR 37: Energiequellen Pumpe
+        on_off_eq_pumpe = modbusdata.registers[27]  # IR 37 = Index 27
+        self.data["on_off_eq_pumpe"] = "off" if (on_off_eq_pumpe == 0) else "on"
+
+        # IR 42-45: Betriebsstundenzähler (32-bit values)
+        # IR 42-43: BSZ Verdichter WW
+        bsz_ww_upper = modbusdata.registers[32]  # IR 42 = Index 32
+        bsz_ww_lower = modbusdata.registers[33]  # IR 43 = Index 33
+        bsz_verdichter_ww = (bsz_ww_upper << 16) | bsz_ww_lower
+        self.data["bsz_verdichter_ww"] = bsz_verdichter_ww
+
+        # IR 44-45: BSZ Verdichter HKR
+        bsz_hkr_upper = modbusdata.registers[34]  # IR 44 = Index 34
+        bsz_hkr_lower = modbusdata.registers[35]  # IR 45 = Index 35
+        bsz_verdichter_hkr = (bsz_hkr_upper << 16) | bsz_hkr_lower
+        self.data["bsz_verdichter_hkr"] = bsz_verdichter_hkr
+
+        # IR 46-49: MKR1/MKR2 Vor-/Rücklauftemperaturen
+        mkr1_temp_vorlauf = modbusdata.registers[36]  # IR 46 = Index 36
+        self.data["mkr1_temp_vorlauf"] = self.checkval(mkr1_temp_vorlauf, 0.1)
+
+        mkr1_temp_ruecklauf = modbusdata.registers[37]  # IR 47 = Index 37
+        self.data["mkr1_temp_ruecklauf"] = self.checkval(mkr1_temp_ruecklauf, 0.1)
+
+        mkr2_temp_vorlauf = modbusdata.registers[38]  # IR 48 = Index 38
+        self.data["mkr2_temp_vorlauf"] = self.checkval(mkr2_temp_vorlauf, 0.1)
+
+        mkr2_temp_ruecklauf = modbusdata.registers[39]  # IR 49 = Index 39
+        self.data["mkr2_temp_ruecklauf"] = self.checkval(mkr2_temp_ruecklauf, 0.1)
+
+        # IR 50: Raum 1 Temperatur
+        temp_raum1 = modbusdata.registers[40]  # IR 50 = Index 40
+        self.data["temp_raum1"] = self.checkval(temp_raum1, 0.1)
+
         # -----------------------------------------------------------------------------------
         # decoder = BinaryPayloadDecoder.fromRegisters(
         #    modbusdata2.registers, byteorder=ENDIAN.BIG
@@ -528,5 +956,121 @@ class HaHeliothermModbusHub:
 
         climate_rl_soll_ovr = modbusdata3.registers[3]
         self.data["climate_rl_soll_ovr"] = bool(climate_rl_soll_ovr)
+
+        # Phase 1: Neue Holding Register
+        # HR 135-138: HKR Heizkurven (HR 100 + offset)
+        hkr_heizgrenze = modbusdata3.registers[35]  # HR 135 = Index 35
+        self.data["hkr_heizgrenze"] = self.checkval(hkr_heizgrenze, 0.1)
+
+        hkr_rlt_soll_ohg = modbusdata3.registers[36]  # HR 136 = Index 36
+        self.data["hkr_rlt_soll_ohg"] = self.checkval(hkr_rlt_soll_ohg, 0.1)
+
+        hkr_rlt_soll_0 = modbusdata3.registers[37]  # HR 137 = Index 37
+        self.data["hkr_rlt_soll_0"] = self.checkval(hkr_rlt_soll_0, 0.1)
+
+        hkr_rlt_soll_uhg = modbusdata3.registers[38]  # HR 138 = Index 38
+        self.data["hkr_rlt_soll_uhg"] = self.checkval(hkr_rlt_soll_uhg, 0.1)
+
+        # Phase 2: WW Minimaltemp, MKR Climate, Override
+        # Note: HR 106 is already read above as climate_ww_bereitung_min
+        # We use it for ww_minimaltemp
+        self.data["ww_minimaltemp"] = self.checkval(climate_ww_bereitung_min, 0.1)
+
+        # HR 108: MKR1 Raum Soll
+        climate_mkr1_raum_soll = modbusdata3.registers[8]  # HR 108 = Index 8
+        self.data["climate_mkr1_raum_soll"] = {
+            "temperature": self.checkval(climate_mkr1_raum_soll, 0.1)
+        }
+
+        # HR 111: MKR1 Kühlen RLT min
+        climate_mkr1_rlt_kuehlen = modbusdata3.registers[11]  # HR 111 = Index 11
+        self.data["climate_mkr1_rlt_kuehlen"] = {
+            "temperature": self.checkval(climate_mkr1_rlt_kuehlen, 0.1)
+        }
+
+        # HR 113: MKR2 Raum Soll
+        climate_mkr2_raum_soll = modbusdata3.registers[13]  # HR 113 = Index 13
+        self.data["climate_mkr2_raum_soll"] = {
+            "temperature": self.checkval(climate_mkr2_raum_soll, 0.1)
+        }
+
+        # HR 116: MKR2 Kühlen RLT min
+        climate_mkr2_rlt_kuehlen = modbusdata3.registers[16]  # HR 116 = Index 16
+        self.data["climate_mkr2_rlt_kuehlen"] = {
+            "temperature": self.checkval(climate_mkr2_rlt_kuehlen, 0.1)
+        }
+
+        # HR 129-134: Override Values and Flags
+        # HR 129-130: Außentemperatur Override
+        aussentemp_override_wert = modbusdata3.registers[29]  # HR 129 = Index 29
+        self.data["aussentemp_override_wert"] = self.checkval(aussentemp_override_wert, 0.1)
+
+        aussentemp_override = modbusdata3.registers[30]  # HR 130 = Index 30
+        self.data["aussentemp_override"] = bool(aussentemp_override)
+
+        # HR 131-132: Pufferspeicher Override
+        puffer_override_wert = modbusdata3.registers[31]  # HR 131 = Index 31
+        self.data["puffer_override_wert"] = self.checkval(puffer_override_wert, 0.1)
+
+        puffer_override = modbusdata3.registers[32]  # HR 132 = Index 32
+        self.data["puffer_override"] = bool(puffer_override)
+
+        # HR 133-134: Brauchwasser Override
+        brauchwasser_override_wert = modbusdata3.registers[33]  # HR 133 = Index 33
+        self.data["brauchwasser_override_wert"] = self.checkval(brauchwasser_override_wert, 0.1)
+
+        brauchwasser_override = modbusdata3.registers[34]  # HR 134 = Index 34
+        self.data["brauchwasser_override"] = bool(brauchwasser_override)
+
+        # Phase 3: Solar & Durchfluss (IR 51-52)
+        # IR 51: Solar KT1
+        solar_kt1 = modbusdata.registers[41]  # IR 51 = Index 41
+        self.data["solar_kt1"] = self.checkval(solar_kt1, 0.1)
+
+        # IR 52: Durchfluss primär
+        durchfluss_primaer = modbusdata.registers[42]  # IR 52 = Index 42
+        self.data["durchfluss_primaer"] = self.checkval(durchfluss_primaer, 0.1)
+
+        # Phase 3: PV/SG Parameter (HR 117-123)
+        # HR 117-118: PV Energie (32-bit)
+        pv_energie_upper = modbusdata3.registers[17]  # HR 117 = Index 17
+        pv_energie_lower = modbusdata3.registers[18]  # HR 118 = Index 18
+        pv_energie = (pv_energie_upper << 16) | pv_energie_lower
+        self.data["pv_energie"] = pv_energie
+
+        # HR 122: Überhitzen bei PV/SG
+        ueberheizen_pv_sg = modbusdata3.registers[22]  # HR 122 = Index 22
+        self.data["ueberheizen_pv_sg"] = self.checkval(ueberheizen_pv_sg, 0.1)
+
+        # HR 123: Unterkühlen bei PV/SG
+        unterkuehlen_pv_sg = modbusdata3.registers[23]  # HR 123 = Index 23
+        self.data["unterkuehlen_pv_sg"] = self.checkval(unterkuehlen_pv_sg, 0.1)
+
+        # Phase 3: MKR1/MKR2 Heizkurven (HR 139-146)
+        # MKR1: HR 139-142
+        mkr1_heizgrenze = modbusdata3.registers[39]  # HR 139 = Index 39
+        self.data["mkr1_heizgrenze"] = self.checkval(mkr1_heizgrenze, 0.1)
+
+        mkr1_rlt_soll_ohg = modbusdata3.registers[40]  # HR 140 = Index 40
+        self.data["mkr1_rlt_soll_ohg"] = self.checkval(mkr1_rlt_soll_ohg, 0.1)
+
+        mkr1_rlt_soll_0 = modbusdata3.registers[41]  # HR 141 = Index 41
+        self.data["mkr1_rlt_soll_0"] = self.checkval(mkr1_rlt_soll_0, 0.1)
+
+        mkr1_rlt_soll_uhg = modbusdata3.registers[42]  # HR 142 = Index 42
+        self.data["mkr1_rlt_soll_uhg"] = self.checkval(mkr1_rlt_soll_uhg, 0.1)
+
+        # MKR2: HR 143-146
+        mkr2_heizgrenze = modbusdata3.registers[43]  # HR 143 = Index 43
+        self.data["mkr2_heizgrenze"] = self.checkval(mkr2_heizgrenze, 0.1)
+
+        mkr2_rlt_soll_ohg = modbusdata3.registers[44]  # HR 144 = Index 44
+        self.data["mkr2_rlt_soll_ohg"] = self.checkval(mkr2_rlt_soll_ohg, 0.1)
+
+        mkr2_rlt_soll_0 = modbusdata3.registers[45]  # HR 145 = Index 45
+        self.data["mkr2_rlt_soll_0"] = self.checkval(mkr2_rlt_soll_0, 0.1)
+
+        mkr2_rlt_soll_uhg = modbusdata3.registers[46]  # HR 146 = Index 46
+        self.data["mkr2_rlt_soll_uhg"] = self.checkval(mkr2_rlt_soll_uhg, 0.1)
 
         return True

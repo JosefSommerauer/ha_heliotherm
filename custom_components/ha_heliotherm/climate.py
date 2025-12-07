@@ -21,6 +21,7 @@ from .const import (
     CLIMATE_TYPES,
     HaHeliothermClimateEntityDescription,
 )
+from .device_config import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,14 +30,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
     hub_name = entry.data[CONF_NAME]
     hub = hass.data[DOMAIN][hub_name]["hub"]
 
-    device_info = {
-        "identifiers": {(DOMAIN, hub_name)},
-        "name": hub_name,
-        "manufacturer": ATTR_MANUFACTURER,
-    }
-
     entities = []
     for sensor_description in CLIMATE_TYPES.values():
+        device_info = get_device_info(
+            hub_name,
+            getattr(sensor_description, 'device', 'main')
+        )
+
         sensor = HaHeliothermModbusClimate(
             hub_name,
             hub,
@@ -112,6 +112,19 @@ class HaHeliothermModbusClimate(ClimateEntity):
             if self.entity_description.key in self._hub.data
             else None
         )
+
+    @property
+    def supported_features(self) -> ClimateEntityFeature:
+        """Return the list of supported features."""
+        # climate_rl_soll can only be edited when override switch is active
+        if self.entity_description.key == "climate_rl_soll":
+            if self._hub.data.get("climate_rl_soll_ovr", False):
+                return self._attr_supported_features
+            else:
+                # Remove TARGET_TEMPERATURE feature to make it read-only
+                return ClimateEntityFeature(0)
+        # All other climate entities keep their default features
+        return self._attr_supported_features
 
     def set_temperature(self, **kwargs) -> None:
         """Set new target temperature."""

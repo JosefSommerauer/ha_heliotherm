@@ -8,20 +8,20 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import callback
 
 from .const import *
+from .device_config import get_device_info
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     hub_name = entry.data[CONF_NAME]
     hub = hass.data[DOMAIN][hub_name]["hub"]
 
-    device_info = {
-        "identifiers": {(DOMAIN, hub_name)},
-        "name": hub_name,
-        "manufacturer": ATTR_MANUFACTURER,
-    }
-
     entities = []
     for switch_description in SWITCH_TYPES.values():
+        device_info = get_device_info(
+            hub_name,
+            getattr(switch_description, 'device', 'main')
+        )
+
         switch = HaHeliothermModbusSwitch(
             hub_name,
             hub,
@@ -49,6 +49,10 @@ class HaHeliothermModbusSwitch(SwitchEntity):
         self._attr_device_info = device_info
         self._hub = hub
         self.entity_description: HaHeliothermSwitchEntityDescription = description
+
+        # Set entity category if specified
+        if hasattr(description, 'entity_category') and description.entity_category:
+            self._attr_entity_category = description.entity_category
 
     async def async_added_to_hass(self):
         """Register callbacks."""

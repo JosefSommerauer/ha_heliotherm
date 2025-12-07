@@ -22,6 +22,7 @@ from .const import (
     NUMBER_TYPES,
     HaHeliothermNumberEntityDescription,
 )
+from .device_config import get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,14 +31,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
     hub_name = entry.data[CONF_NAME]
     hub = hass.data[DOMAIN][hub_name]["hub"]
 
-    device_info = {
-        "identifiers": {(DOMAIN, hub_name)},
-        "name": hub_name,
-        "manufacturer": ATTR_MANUFACTURER,
-    }
-
     entities = []
     for sensor_description in NUMBER_TYPES.values():
+        device_info = get_device_info(
+            hub_name,
+            getattr(sensor_description, 'device', 'main')
+        )
+
         sensor = HaHeliothermModbusNumber(
             hub_name,
             hub,
@@ -66,6 +66,18 @@ class HaHeliothermModbusNumber(NumberEntity):
         self._hub = hub
         self.entity_description: HaHeliothermNumberEntityDescription = description
         self._attr_mode = description.mode
+
+        # Set entity category if specified
+        if hasattr(description, 'entity_category') and description.entity_category:
+            self._attr_entity_category = description.entity_category
+
+        # Set min/max/step if specified
+        if hasattr(description, 'native_min_value') and description.native_min_value is not None:
+            self._attr_native_min_value = description.native_min_value
+        if hasattr(description, 'native_max_value') and description.native_max_value is not None:
+            self._attr_native_max_value = description.native_max_value
+        if hasattr(description, 'native_step') and description.native_step is not None:
+            self._attr_native_step = description.native_step
 
     async def async_added_to_hass(self):
         """Register callbacks."""
@@ -96,8 +108,6 @@ class HaHeliothermModbusNumber(NumberEntity):
             else None
         )
 
-    def set_native_value(self, value: float) -> None:
-        self._attr_value = value
-
     async def async_set_native_value(self, value: float) -> None:
-        self._attr_value = value
+        """Set new value."""
+        await self._hub.setter_function_callback(self, value)
